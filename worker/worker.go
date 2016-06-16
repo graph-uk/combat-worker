@@ -120,46 +120,6 @@ func (t *CombatWorker) addToGOPath(pathExtention string) []string {
 	return result
 }
 
-func (t *CombatWorker) doCasesExplore(params, sessionID string) (status int, cases string) {
-	fmt.Println("CasesExplore")
-	err := unzip("./job/archived.zip", "./job/unarch")
-	if err != nil {
-		fmt.Print(err.Error())
-	}
-	os.Chdir("job/unarch/src/Tests")
-	rootTestsPath, _ := os.Getwd()
-	rootTestsPath += string(os.PathSeparator) + ".." + string(os.PathSeparator) + ".."
-	//	fmt.Println(t.addToGOPath(rootTestsPath))
-	//	os.Exit(0)
-
-	command := []string{"cases"}
-	fmt.Println(params)
-	command = append(command, strings.Split(params, " ")...)
-
-	cmd := exec.Command("combat", command...)
-	//cmd.Env = os.Environ()
-	cmd.Env = t.addToGOPath(rootTestsPath)
-
-	var out bytes.Buffer
-	var outErr bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &outErr
-	fmt.Println(command)
-	fmt.Print("Run combat cases... ")
-	exitStatus := cmd.Run()
-
-	if exitStatus == nil {
-		fmt.Println("Ok")
-		t.postCases(out.String(), sessionID)
-		//fmt.Println(out.String())
-	} else {
-		fmt.Println("Fail")
-		fmt.Println(out.String())
-		fmt.Println(outErr.String())
-	}
-	return 1, ""
-}
-
 func (t *CombatWorker) doRunCase(params, caseID string) {
 	fmt.Println("CaseRunning " + params)
 	err := unzip("./job/archived.zip", "./job/unarch")
@@ -270,9 +230,6 @@ func (t *CombatWorker) Work() {
 	os.Chdir(t.startPath)
 	cleanupJob()
 	command, params, sessionID := t.getJob(t.serverURL)
-	if command == "CasesExplore" {
-		t.doCasesExplore(params, sessionID)
-	}
 	if command == "RunCase" {
 		t.doRunCase(params, sessionID)
 	}
