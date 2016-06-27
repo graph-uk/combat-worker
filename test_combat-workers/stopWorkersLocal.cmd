@@ -1,0 +1,1 @@
+taskkill /im Combat-Worker.exe
