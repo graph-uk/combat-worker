@@ -2,3 +2,6 @@
 *.exe~
 /job
 
+#idea
+.idea
+*.iml

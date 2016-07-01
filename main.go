@@ -17,5 +17,4 @@ func main() {
 	for {
 		worker.Work()
 	}
-
 }
