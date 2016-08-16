@@ -170,29 +170,31 @@ func (t *CombatWorker) postCaseResult(caseID, exitStatus, stdout string) error {
 	bodyBuf := &bytes.Buffer{}
 	bodyWriter := multipart.NewWriter(bodyBuf)
 
-	if _, err := os.Stat("out"); err != nil { // if we have has not "out" directory - create it
-		os.MkdirAll("out", 0777)
-	}
-	outFileName := t.packOutputToTemp()
-	//zipit("out", "out.zip")
+	if exitStatus != "0" { // send out only while try is failed
+		if _, err := os.Stat("out"); err != nil { // if we have has not "out" directory - create it
+			os.MkdirAll("out", 0777)
+		}
+		outFileName := t.packOutputToTemp()
+		//zipit("out", "out.zip")
 
-	fileWriter, err := bodyWriter.CreateFormFile("uploadfile", outFileName)
-	if err != nil {
-		fmt.Println("error writing to buffer")
-		return err
-	}
+		fileWriter, err := bodyWriter.CreateFormFile("uploadfile", outFileName)
+		if err != nil {
+			fmt.Println("error writing to buffer")
+			return err
+		}
 
-	// open file handle
-	fh, err := os.Open(outFileName)
-	if err != nil {
-		fmt.Println("error opening file")
-		return err
-	}
+		// open file handle
+		fh, err := os.Open(outFileName)
+		if err != nil {
+			fmt.Println("error opening file")
+			return err
+		}
 
-	//iocopy
-	_, err = io.Copy(fileWriter, fh)
-	if err != nil {
-		return err
+		//iocopy
+		_, err = io.Copy(fileWriter, fh)
+		if err != nil {
+			return err
+		}
 	}
 
 	contentType := bodyWriter.FormDataContentType()
