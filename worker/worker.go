@@ -2,11 +2,10 @@ package combatWorker
 
 import (
 	"bytes"
+	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"os/exec"
@@ -57,7 +56,7 @@ func (t *CombatWorker) packOutputToTemp() string {
 }
 
 func (t *CombatWorker) getJob(host string) (command string, params string, sessionID string) {
-	response, err := http.Get(host + "/getJob")
+	response, err := http.Post(host+"/api/v1/jobs/acquire", "application/json", bytes.NewBuffer([]byte{}))
 	if err != nil {
 		fmt.Println()
 		fmt.Printf("%s", err)
@@ -79,34 +78,6 @@ func (t *CombatWorker) getJob(host string) (command string, params string, sessi
 		ioutil.WriteFile("./job/archived.zip", contents, 0777)
 	}
 	return command, params, sessionID
-}
-
-func (t *CombatWorker) postCases(cases string, sessionID string) error {
-	fmt.Print("post cases... ")
-	fmt.Println("beforeSend")
-	bodyBuf := &bytes.Buffer{}
-	bodyWriter := multipart.NewWriter(bodyBuf)
-	bodyWriter.WriteField("sessionID", sessionID)
-	bodyWriter.WriteField("cases", cases)
-	//fileWriter, err := bodyWriter.("uploadfile", filename)
-	contentType := bodyWriter.FormDataContentType()
-	bodyWriter.Close()
-
-	resp, err := http.Post(t.serverURL+"/setSessionCases", contentType, bodyBuf)
-	if err != nil {
-		fmt.Print(err)
-		return err
-	}
-	fmt.Println("afterSend")
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		fmt.Println("Fail: incorrect request status - " + strconv.Itoa(resp.StatusCode))
-		return errors.New("Incorrect request status: " + strconv.Itoa(resp.StatusCode))
-	} else {
-		fmt.Println("Ok")
-	}
-	cleanupJob()
-	return nil
 }
 
 func (t *CombatWorker) addToGOPath(pathExtention string) []string {
@@ -153,8 +124,6 @@ func (t *CombatWorker) doRunCase(params, caseID string) {
 	if exitStatus == nil {
 		exitStatusString = "0"
 		fmt.Println("Ok")
-		//postCases(out.String(), sessionID)
-		//fmt.Println(out.String())
 	} else {
 		exitStatusString = exitStatus.Error()
 		fmt.Println("Fail")
@@ -167,43 +136,27 @@ func (t *CombatWorker) doRunCase(params, caseID string) {
 }
 
 func (t *CombatWorker) postCaseResult(caseID, exitStatus, stdout string) error {
-	bodyBuf := &bytes.Buffer{}
-	bodyWriter := multipart.NewWriter(bodyBuf)
+	var content string
 
 	if exitStatus != "0" { // send out only while try is failed
 		if _, err := os.Stat("out"); err != nil { // if we have has not "out" directory - create it
 			os.MkdirAll("out", 0777)
 		}
 		outFileName := t.packOutputToTemp()
-		//zipit("out", "out.zip")
 
-		fileWriter, err := bodyWriter.CreateFormFile("uploadfile", outFileName)
-		if err != nil {
-			fmt.Println("error writing to buffer")
-			return err
-		}
+		fileContent, err := ioutil.ReadFile(outFileName)
 
-		// open file handle
-		fh, err := os.Open(outFileName)
-		if err != nil {
-			fmt.Println("error opening file")
-			return err
-		}
-
-		//iocopy
-		_, err = io.Copy(fileWriter, fh)
 		if err != nil {
 			return err
 		}
+
+		content = base64.StdEncoding.EncodeToString(fileContent)
 	}
 
-	contentType := bodyWriter.FormDataContentType()
-	bodyWriter.WriteField("caseID", caseID)
-	bodyWriter.WriteField("exitStatus", exitStatus)
-	bodyWriter.WriteField("stdOut", stdout)
-	bodyWriter.Close()
+	json := fmt.Sprintf("{\"content\": \"%s\", \"exitStatus\":\"%s\", \"output\":\"%s\"}", content, exitStatus, stdout)
+	body := bytes.NewBuffer([]byte(json))
 
-	resp, err := http.Post(t.serverURL+"/setCaseResult", contentType, bodyBuf)
+	resp, err := http.Post(fmt.Sprintf("%s/api/v1/cases/%s/tries", t.serverURL, caseID), "application/json", body)
 	if err != nil {
 		return err
 	}
