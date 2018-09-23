@@ -1,31 +1,37 @@
-package combatWorker
+package worker
 
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/graph-uk/combat-worker/models"
+	"github.com/mholt/archiver"
+	resty "gopkg.in/resty.v1"
 )
 
+// CombatWorker ...
 type CombatWorker struct {
 	startPath string
 	serverURL string
 }
 
-func (t *CombatWorker) getServerUrlFromCLI() (string, error) {
+func (t *CombatWorker) getServerURLFromCLI() (string, error) {
 	if len(os.Args) < 2 {
 		return "", errors.New("Server URL is required")
 	}
 	return os.Args[1], nil
 }
 
+// NewCombatWorker ...
 func NewCombatWorker() (*CombatWorker, error) {
 	var result CombatWorker
 	var err error
@@ -36,7 +42,7 @@ func NewCombatWorker() (*CombatWorker, error) {
 		return &result, err
 	}
 
-	result.serverURL, err = result.getServerUrlFromCLI()
+	result.serverURL, err = result.getServerURLFromCLI()
 	if err != nil {
 		return &result, err
 	}
@@ -51,33 +57,48 @@ func (t *CombatWorker) packOutputToTemp() string {
 		panic(err)
 	}
 	tmpFile.Close()
-	zipit("out", tmpFile.Name())
+	archiver.Zip.Make(tmpFile.Name(), []string{"out"})
 	return tmpFile.Name()
 }
 
-func (t *CombatWorker) getJob(host string) (command string, params string, sessionID string) {
-	response, err := http.Post(host+"/api/v1/jobs/acquire", "application/json", bytes.NewBuffer([]byte{}))
+func handleError(err error) (command models.Command, params string, caseID string) {
+	fmt.Println()
+	fmt.Printf("%s", err)
+	return models.Idle, "", ""
+}
+
+func (t *CombatWorker) getJob(host string) (command models.Command, params string, caseID string) {
+
+	url := fmt.Sprintf("%s/api/v1/jobs/acquire", host)
+
+	resp, err := resty.R().
+		Post(url)
+
 	if err != nil {
-		fmt.Println()
-		fmt.Printf("%s", err)
-		return "idle", "", ""
-	} else {
-		fmt.Println("getJob - " + response.Header.Get("command"))
-		defer response.Body.Close()
-		command = response.Header.Get("Command")
-		if command == "idle" {
-			return command, "", ""
-		}
-		params = response.Header.Get("Params")
-		sessionID = response.Header.Get("SessionID")
-		contents, err := ioutil.ReadAll(response.Body)
-		if err != nil {
-			fmt.Println("Cannot read request body")
-			fmt.Println(err.Error())
-		}
-		ioutil.WriteFile("./job/archived.zip", contents, 0777)
+		return handleError(err)
 	}
-	return command, params, sessionID
+
+	var model models.AcquireJobResponseModel
+
+	if resp.StatusCode() == http.StatusNotFound {
+		return models.Idle, "", ""
+	}
+
+	err = json.Unmarshal(resp.Body(), &model)
+
+	if err != nil {
+		return handleError(err)
+	}
+
+	caseContent, err := base64.StdEncoding.DecodeString(model.Content)
+
+	if err != nil {
+		return handleError(err)
+	}
+
+	ioutil.WriteFile("./job/archived.zip", caseContent, 0777)
+
+	return models.RunCase, model.CommandLine, model.CaseID
 }
 
 func (t *CombatWorker) addToGOPath(pathExtention string) []string {
@@ -93,19 +114,17 @@ func (t *CombatWorker) addToGOPath(pathExtention string) []string {
 
 func (t *CombatWorker) doRunCase(params, caseID string) {
 	fmt.Println("CaseRunning " + params)
-	err := unzip("./job/archived.zip", "./job/unarch")
+
+	err := archiver.Zip.Open("./job/archived.zip", "./job/unarch")
+
 	if err != nil {
 		fmt.Print(err.Error())
 	}
 	os.Chdir("job/unarch/src/Tests")
-	//os.Exit(0)
 	rootTestsPath, _ := os.Getwd()
 	rootTestsPath += string(os.PathSeparator) + ".." + string(os.PathSeparator) + ".."
-	//	fmt.Println(t.addToGOPath(rootTestsPath))
-	//	os.Exit(0)
 
 	command := []string{"run"}
-	//fmt.Println(params)
 	command = append(command, strings.Split(params, " ")...)
 	os.Chdir(command[1])
 	command[1] = "main.go"
@@ -116,7 +135,6 @@ func (t *CombatWorker) doRunCase(params, caseID string) {
 	var outErr bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &outErr
-	//	fmt.Println(command)
 	fmt.Print("Run case... ")
 	exitStatus := cmd.Run()
 
@@ -153,18 +171,21 @@ func (t *CombatWorker) postCaseResult(caseID, exitStatus, stdout string) error {
 		content = base64.StdEncoding.EncodeToString(fileContent)
 	}
 
-	json := fmt.Sprintf("{\"content\": \"%s\", \"exitStatus\":\"%s\", \"output\":\"%s\"}", content, exitStatus, stdout)
-	body := bytes.NewBuffer([]byte(json))
+	url := fmt.Sprintf("%s/api/v1/cases/%s/tries", t.serverURL, caseID)
 
-	resp, err := http.Post(fmt.Sprintf("%s/api/v1/cases/%s/tries", t.serverURL, caseID), "application/json", body)
+	resp, err := resty.R().
+		SetBody(&models.TryModel{
+			Content:    content,
+			ExitStatus: exitStatus,
+			Output:     stdout}).
+		Post(url)
+
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
 
-	fmt.Println(resp.Status)
-	if resp.StatusCode != 200 {
-		return errors.New("Incorrect request status: " + strconv.Itoa(resp.StatusCode))
+	if resp.StatusCode() != http.StatusOK {
+		return fmt.Errorf("Incorrect request status: %d", resp.StatusCode())
 	}
 	return nil
 }
@@ -181,14 +202,15 @@ func cleanupJob() error {
 	return nil
 }
 
-func (t *CombatWorker) Work() {
+// Process ...
+func (t *CombatWorker) Process() {
 	os.Chdir(t.startPath)
 	cleanupJob()
-	command, params, sessionID := t.getJob(t.serverURL)
-	if command == "RunCase" {
-		t.doRunCase(params, sessionID)
+	command, params, caseID := t.getJob(t.serverURL)
+	if command == models.RunCase {
+		t.doRunCase(params, caseID)
 	}
-	if command == "idle" {
+	if command == models.Idle {
 		time.Sleep(5 * time.Second)
 	}
 }
