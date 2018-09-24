@@ -61,13 +61,13 @@ func (t *CombatWorker) packOutputToTemp() string {
 	return tmpFile.Name()
 }
 
-func handleError(err error) (command models.Command, params string, caseID string) {
+func handleError(err error) (command models.Command, params string, caseID int) {
 	fmt.Println()
 	fmt.Printf("%s", err)
-	return models.Idle, "", ""
+	return models.Idle, "", 0
 }
 
-func (t *CombatWorker) getJob(host string) (command models.Command, params string, caseID string) {
+func (t *CombatWorker) getJob(host string) (command models.Command, params string, caseID int) {
 
 	url := fmt.Sprintf("%s/api/v1/jobs/acquire", host)
 
@@ -81,7 +81,7 @@ func (t *CombatWorker) getJob(host string) (command models.Command, params strin
 	var model models.AcquireJobResponseModel
 
 	if resp.StatusCode() == http.StatusNotFound {
-		return models.Idle, "", ""
+		return models.Idle, "", 0
 	}
 
 	err = json.Unmarshal(resp.Body(), &model)
@@ -112,7 +112,7 @@ func (t *CombatWorker) addToGOPath(pathExtention string) []string {
 	return result
 }
 
-func (t *CombatWorker) doRunCase(params, caseID string) {
+func (t *CombatWorker) doRunCase(params string, caseID int) {
 	fmt.Println("CaseRunning " + params)
 
 	err := archiver.Zip.Open("./job/archived.zip", "./job/unarch")
@@ -153,7 +153,7 @@ func (t *CombatWorker) doRunCase(params, caseID string) {
 	return
 }
 
-func (t *CombatWorker) postCaseResult(caseID, exitStatus, stdout string) error {
+func (t *CombatWorker) postCaseResult(caseID int, exitStatus, stdout string) error {
 	var content string
 
 	if exitStatus != "0" { // send out only while try is failed
@@ -171,7 +171,7 @@ func (t *CombatWorker) postCaseResult(caseID, exitStatus, stdout string) error {
 		content = base64.StdEncoding.EncodeToString(fileContent)
 	}
 
-	url := fmt.Sprintf("%s/api/v1/cases/%s/tries", t.serverURL, caseID)
+	url := fmt.Sprintf("%s/api/v1/cases/%d/tries", t.serverURL, caseID)
 
 	resp, err := resty.R().
 		SetBody(&models.TryModel{

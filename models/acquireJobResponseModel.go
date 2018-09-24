@@ -2,7 +2,7 @@ package models
 
 // AcquireJobResponseModel ...
 type AcquireJobResponseModel struct {
-	CaseID      string
+	CaseID      int
 	CommandLine string
 	Content     string
 }
