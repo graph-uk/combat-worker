@@ -8,13 +8,13 @@ import (
 )
 
 func main() {
-	worker, err := combatWorker.NewCombatWorker()
+	worker, err := worker.NewCombatWorker()
 	if err != nil {
 		fmt.Println("Cannot init combat worker")
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}
 	for {
-		worker.Work()
+		worker.Process()
 	}
 }
