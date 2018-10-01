@@ -14,7 +14,8 @@ import (
 	"time"
 
 	"github.com/graph-uk/combat-worker/models"
-	"github.com/mholt/archiver"
+	//"github.com/mholt/archiver"
+	"github.com/graph-uk/combat-worker/utils"
 	resty "gopkg.in/resty.v1"
 )
 
@@ -57,7 +58,8 @@ func (t *CombatWorker) packOutputToTemp() string {
 		panic(err)
 	}
 	tmpFile.Close()
-	archiver.Zip.Make(tmpFile.Name(), []string{"out"})
+	//archiver.Zip.Make(tmpFile.Name(), []string{"out"})
+	utils.Zipit(`out`, tmpFile.Name())
 	return tmpFile.Name()
 }
 
@@ -115,12 +117,12 @@ func (t *CombatWorker) addToGOPath(pathExtention string) []string {
 func (t *CombatWorker) doRunCase(params string, caseID int) {
 	fmt.Println("CaseRunning " + params)
 
-	err := archiver.Zip.Open("./job/archived.zip", "./job/unarch")
-
+	err := utils.Unzip(`./job/archived.zip`, `./job/unarch`)
 	if err != nil {
 		fmt.Print(err.Error())
 	}
 	os.Chdir("job/unarch/src/Tests")
+
 	rootTestsPath, _ := os.Getwd()
 	rootTestsPath += string(os.PathSeparator) + ".." + string(os.PathSeparator) + ".."
 
@@ -156,20 +158,30 @@ func (t *CombatWorker) doRunCase(params string, caseID int) {
 func (t *CombatWorker) postCaseResult(caseID int, exitStatus, stdout string) error {
 	var content string
 
-	if exitStatus != "0" { // send out only while try is failed
-		if _, err := os.Stat("out"); err != nil { // if we have has not "out" directory - create it
-			os.MkdirAll("out", 0777)
-		}
-		outFileName := t.packOutputToTemp()
-
-		fileContent, err := ioutil.ReadFile(outFileName)
-
-		if err != nil {
-			return err
-		}
-
-		content = base64.StdEncoding.EncodeToString(fileContent)
+	if _, err := os.Stat("out"); err != nil { // if we have has not "out" directory - create it
+		os.MkdirAll("out", 0777)
 	}
+
+	files, err := ioutil.ReadDir(`out`)
+	if err != nil {
+		panic(err)
+	}
+	for _, f := range files {
+		if !(strings.Contains(f.Name(), `.txt`) || strings.Contains(f.Name(), `.html`) || strings.Contains(f.Name(), `.png`)) {
+			os.Remove(`out` + string(os.PathSeparator) + f.Name()) // hotfix for carousel
+		}
+	}
+	os.Remove(`out` + string(os.PathSeparator) + `SeleniumSessionID.txt`) // hotfix for carousel
+
+	outFileName := t.packOutputToTemp()
+
+	fileContent, err := ioutil.ReadFile(outFileName)
+
+	if err != nil {
+		return err
+	}
+
+	content = base64.StdEncoding.EncodeToString(fileContent)
 
 	url := fmt.Sprintf("%s/api/v1/cases/%d/tries", t.serverURL, caseID)
 
