@@ -152,7 +152,7 @@ func (t *CombatWorker) doRunCase(params string, caseID int) {
 	}
 
 	t.postCaseResult(caseID, exitStatusString, out.String()+outErr.String())
-	return
+	//return
 }
 
 func (t *CombatWorker) postCaseResult(caseID int, exitStatus, stdout string) error {
@@ -162,16 +162,17 @@ func (t *CombatWorker) postCaseResult(caseID int, exitStatus, stdout string) err
 		os.MkdirAll("out", 0777)
 	}
 
-	files, err := ioutil.ReadDir(`out`)
-	if err != nil {
-		panic(err)
-	}
-	for _, f := range files {
-		if !(strings.Contains(f.Name(), `.txt`) || strings.Contains(f.Name(), `.html`) || strings.Contains(f.Name(), `.png`)) {
-			os.Remove(`out` + string(os.PathSeparator) + f.Name()) // hotfix for carousel
-		}
-	}
-	os.Remove(`out` + string(os.PathSeparator) + `SeleniumSessionID.txt`) // hotfix for carousel
+	//	files, err := ioutil.ReadDir(`out`)
+	//	if err != nil {
+	//		panic(err)
+	//	}
+
+	//	for _, f := range files {
+	//		if !(strings.Contains(f.Name(), `.txt`) || strings.Contains(f.Name(), `.html`) || strings.Contains(f.Name(), `.png`)) {
+	//			os.Remove(`out` + string(os.PathSeparator) + f.Name()) // hotfix for carousel
+	//		}
+	//	}
+	//os.Remove(`out` + string(os.PathSeparator) + `SeleniumSessionID.txt`) // hotfix for carousel
 
 	outFileName := t.packOutputToTemp()
 
