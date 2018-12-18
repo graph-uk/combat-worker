@@ -119,7 +119,7 @@ func (t *CombatWorker) doRunCase(params string, caseID int) {
 
 	err := utils.Unzip(`./job/archived.zip`, `./job/unarch`)
 	if err != nil {
-		fmt.Print(err.Error())
+		fmt.Println(err.Error())
 	}
 	os.Chdir("job/unarch/src/Tests")
 
@@ -129,6 +129,14 @@ func (t *CombatWorker) doRunCase(params string, caseID int) {
 	command := []string{"run"}
 	command = append(command, strings.Split(params, " ")...)
 	os.Chdir(command[1])
+
+	slash := string(os.PathSeparator)
+	os.RemoveAll("out")
+	err = os.Rename(".."+slash+".."+slash+".."+slash+".."+slash+".."+slash+"outBackUp", "out")
+	if err != nil {
+		fmt.Println(err.Error())
+
+	}
 	command[1] = "main.go"
 
 	cmd := exec.Command("go", command...)
@@ -152,28 +160,35 @@ func (t *CombatWorker) doRunCase(params string, caseID int) {
 	}
 
 	t.postCaseResult(caseID, exitStatusString, out.String()+outErr.String())
-	return
+	//return
 }
 
 func (t *CombatWorker) postCaseResult(caseID int, exitStatus, stdout string) error {
 	var content string
 
-	if _, err := os.Stat("out"); err != nil { // if we have has not "out" directory - create it
+	if _, err := os.Stat("out"); err != nil { // if we don't have "out" directory - create it
 		os.MkdirAll("out", 0777)
 	}
 
-	files, err := ioutil.ReadDir(`out`)
+	//	files, err := ioutil.ReadDir(`out`)
+	//	if err != nil {
+	//		panic(err)
+	//	}
+
+	//	for _, f := range files {
+	//		if !(strings.Contains(f.Name(), `.txt`) || strings.Contains(f.Name(), `.html`) || strings.Contains(f.Name(), `.png`)) {
+	//			os.Remove(`out` + string(os.PathSeparator) + f.Name()) // hotfix for carousel
+	//		}
+	//	}
+	//os.Remove(`out` + string(os.PathSeparator) + `SeleniumSessionID.txt`) // hotfix for carousel
+
+	outFileName := t.packOutputToTemp()
+	slash := string(os.PathSeparator)
+
+	err := os.Rename("out", ".."+slash+".."+slash+".."+slash+".."+slash+".."+slash+"outBackUp")
 	if err != nil {
 		panic(err)
 	}
-	for _, f := range files {
-		if !(strings.Contains(f.Name(), `.txt`) || strings.Contains(f.Name(), `.html`) || strings.Contains(f.Name(), `.png`)) {
-			os.Remove(`out` + string(os.PathSeparator) + f.Name()) // hotfix for carousel
-		}
-	}
-	os.Remove(`out` + string(os.PathSeparator) + `SeleniumSessionID.txt`) // hotfix for carousel
-
-	outFileName := t.packOutputToTemp()
 
 	fileContent, err := ioutil.ReadFile(outFileName)
 
